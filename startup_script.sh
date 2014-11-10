@@ -117,8 +117,8 @@ automerger start
 
 # Restart the WWW log server.
 sudo -u nobody pkill -U nobody python
-sudo -u nobody sh -c 'setsid /automerger/bin/www-server.py \
-                      /automerger/automerger.log > /dev/null < /dev/null &'
+sudo -u nobody sh -c 'nohup /automerger/bin/www-server.py \
+                      /automerger/automerger.log < /dev/null >/dev/null 2>&1 &'
 
 SUDOEOF
 )" automerger
