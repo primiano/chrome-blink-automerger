@@ -53,11 +53,17 @@ su -c "$(cat <<"SUDOEOF"
 set -e
 cd ~
 
-AUTOMERGER_REPO="$(curl -H "Metadata-Flavor: Google" \
+AUTOMERGER_REPO="$(curl -f -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/attributes/AUTOMERGER_REPO")"
 
-AUTOMERGER_BRANCH="$(curl -H "Metadata-Flavor: Google" \
+AUTOMERGER_BRANCH="$(curl -f -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/attributes/AUTOMERGER_BRANCH")"
+
+NETRC=$(curl -f -H "Metadata-Flavor: Google" \
+    "http://metadata.google.internal/computeMetadata/v1/instance/attributes/netrc")"
+if [ $? == 0 ]; then
+  echo "${NETRC}" > ~/.netrc
+fi
 
 # Stop the automerger if it's already running.
 automerger stop &>/dev/null || true
