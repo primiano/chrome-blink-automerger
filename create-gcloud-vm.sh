@@ -7,7 +7,7 @@ if [ -f "$(dirname $0)/netrc" ]; then
 fi
 
 gcloud compute \
-    instances create "chrome-bink-automerger" \
+    instances create "chromium-bink-automerger" \
     --machine-type "f1-micro" \
     --metadata-from-file startup-script=startup_script.sh "${NETRC_META}"\
     --metadata AUTOMERGER_REPO="${AUTOMERGER_REPO}" \

@@ -1,6 +1,6 @@
 AUTOMERGER_CYCLE_TIME_SEC=60
 AUTOMERGER_GIT_NAME="Chrome+Blink Automerger"
-AUTOMERGER_GIT_EMAIL="chrome-blink-automerger@chromium.org"
+AUTOMERGER_GIT_EMAIL="chromium-blink-automerger@chromium.org"
 
 AUTOMERGER_REPO="https://github.com/primiano/chrome-blink-automerger"
 AUTOMERGER_BRANCH="master"
