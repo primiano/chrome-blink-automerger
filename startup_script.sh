@@ -63,6 +63,7 @@ NETRC="$(curl -f -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/attributes/netrc")"
 if [ $? == 0 ]; then
   echo "${NETRC}" > ~/.netrc
+  chmod 600  ~/.netrc
 fi
 
 # Stop the automerger if it's already running.
