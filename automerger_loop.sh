@@ -12,6 +12,7 @@ while true; do
   # Self-update
   git -C "$(dirname $0)" pull --ff-only
   git -C "$(dirname $0)" clean -df
+  pkill git
 
   "$(dirname $0)/automerger_iteration.sh"
   exit_code=$?

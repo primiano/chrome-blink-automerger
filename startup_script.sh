@@ -70,7 +70,7 @@ fi
 automerger stop &>/dev/null || true
 
 # Set git settings.
-git config --global core.deltaBaseCacheLimit 1G
+git config --global core.deltaBaseCacheLimit 128M
 
 # Fetch and run the automerger scripts.
 AUTOMERGER_BIN=/automerger/bin

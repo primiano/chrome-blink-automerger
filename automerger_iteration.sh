@@ -133,12 +133,11 @@ if [ ! -d "${WORKDIR}" ]; then
   git remote add origin "${MERGED_REPO}"
 fi
 
-
 print_step "Syncing remotes"
 cd "${WORKDIR}"
 rm -f index  # Drop any stale index
+rm -f pack/objects/pack/tmp_pack_*
 with_backoff git remote update
-
 
 print_step "Catching up and rewriting Blink history"
 # Export these as they will be needed in the filter-branch subshells.
@@ -207,7 +206,6 @@ else  # N_COMMITS_TO_REWRITE > 0
   echo "Nothing to be done"
 fi
 
-
 print_step "Merging Chromium ToT + Blink ToT"
 N_COMMITS_TO_MERGE="$(git rev-list --count --no-merges \
                     chromium/master origin/blink-rewrite \
@@ -235,7 +233,6 @@ if [ ${N_COMMITS_TO_MERGE} -gt 0 ]; then
 else  # N_COMMITS_TO_MERGE > 0
   echo "Nothing to be done"
 fi
-
 
 print_step "Merging Chromium ToT + Blink @ DEPS"
 # Conversely to the previous case (ToT+ToT), the resulting history of this
