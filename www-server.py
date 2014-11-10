@@ -12,9 +12,9 @@ class HTTPHandler(BaseHTTPRequestHandler):
     self.send_response(200)
     self.send_header('Content-type','text/plain')
     self.end_headers()
-    self.wfile.write('Last %d log lines (most recent first)\n\n' % MAX_LINES)
+    self.wfile.write('Last %d log lines\n\n' % MAX_LINES)
     lines = open(sys.argv[1]).readlines()
-    for line in reversed(lines[-MAX_LINES:]):
+    for line in lines[-MAX_LINES:]:
       self.wfile.write(line)
 	  
 if __name__ == "__main__":
