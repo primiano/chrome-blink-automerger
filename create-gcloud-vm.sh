@@ -2,8 +2,8 @@
 
 source "$(dirname $0)/vars.sh"
 
-if [ -f netrc ]; then
-  NETRC_META="netrc=netrc"
+if [ -f "$(dirname $0)/netrc" ]; then
+  NETRC_META="netrc=$(dirname $0)/netrc"
 fi
 
 gcloud compute \
