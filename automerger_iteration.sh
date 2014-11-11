@@ -52,13 +52,13 @@ with_backoff () {
   local timeout=30
   local exit_code=0
 
-  while [[ $attempts > 0 ]]; do
+  while [ $attempts -gt 0 ]; do
     set +e
     "$@"
     exit_code=$?
     set -e
 
-    [[ $exit_code == 0 ]] && break
+    [ $exit_code -eq 0 ] && break
 
     print_step "Command $@ failed, retrying in $timeout.."
     sleep $timeout
@@ -123,12 +123,26 @@ merge_chromium_and_blink_trees() {
 ##########
 #  MAIN
 ##########
+
+# If the push target is a local directory (i.e. the AM also act as a dumb HTTP
+# server) prepare the directory.
+if [ "${MERGED_REPO:0:1}" = "/" ]; then
+  if [ ! -d "${MERGED_REPO}" ]; then
+    mkdir -p "${MERGED_REPO}"
+    (
+      cd "${MERGED_REPO}"
+      git init --bare
+      git config pack.packSizeLimit 64m  # For dumb http protocol.
+      mv hooks/post-update.sample hooks/post-update
+    )
+  fi
+fi
+
 if [ ! -d "${WORKDIR}" ]; then
   print_step "Setting up the git repo in ${WORKDIR}"
   mkdir -p "${WORKDIR}"
   cd "${WORKDIR}"
   git init --bare
-  git config pack.packSizeLimit 64m  # For dumb http protocol.
   git remote add blink -t master "${BLINK_REPO}"
   git remote add chromium -t master "${CHROMIUM_REPO}"
   git remote add origin "${MERGED_REPO}"
