@@ -8,6 +8,10 @@
 
 mkdir -p /automerger
 
+/usr/share/google/safe_format_and_mount -o noatime,commit=600,data=writeback \
+    /dev/disk/by-id/google-chromium-blink-automerger-ssd \
+    /automerger
+
 # Create the automerger user if it doesn't exist.
 getent passwd automerger &>/dev/null || {
   adduser -q automerger --home /automerger --gecos automerger --disabled-login
