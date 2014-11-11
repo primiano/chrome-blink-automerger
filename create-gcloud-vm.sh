@@ -8,6 +8,7 @@ if [ -f "$(dirname $0)/netrc" ]; then
 fi
 
 GC_ZONE="us-central1-f"
+GC_REGION="us-central1"
 PERSISTENT_DISK="chromium-blink-automerger-ssd"
 
 # Create the persistent disk if not existing
@@ -18,6 +19,14 @@ gcloud compute disks describe "${PERSISTENT_DISK}" \
       --size "32" --zone "${GC_ZONE}" --type "pd-ssd" "$@"
 }
 
+# Use the static ip address if available
+STATIC_IP="$(gcloud compute addresses describe chromium-bink-automerger \
+    --region ${GC_REGION} -q "$@" | grep address: | cut -d: -f2 2>/dev/null)"
+if [ "${STATIC_IP}" != "" ]; then
+  STATIC_IP_ARGS="--address ${STATIC_IP}"
+fi
+
+set -x
 gcloud compute \
     instances create "chromium-bink-automerger" \
     --machine-type "g1-small" \
@@ -34,7 +43,9 @@ gcloud compute \
     --disk name=${PERSISTENT_DISK} \
            device-name=${PERSISTENT_DISK} \
            auto-delete=no  \
+    ${STATIC_IP_ARGS} \
     "$@"
+set +x
 
 gcloud compute firewall-rules create allow-http --description "http" \
     --allow tcp:80,8080,443 "$@" &>/dev/null
