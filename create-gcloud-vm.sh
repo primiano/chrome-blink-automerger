@@ -20,7 +20,7 @@ gcloud compute disks describe "${PERSISTENT_DISK}" \
 
 gcloud compute \
     instances create "chromium-bink-automerger" \
-    --machine-type "f1-micro" \
+    --machine-type "g1-small" \
     --metadata-from-file startup-script=startup_script.sh "${NETRC_META}"\
     --metadata AUTOMERGER_REPO="${AUTOMERGER_REPO}" \
                AUTOMERGER_BRANCH="${AUTOMERGER_BRANCH}" \
