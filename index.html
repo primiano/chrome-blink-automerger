@@ -8,6 +8,8 @@ iframe {width: 100%; border: 1px solid #aaa; background: #eee; }
 </head>
 <body>
 
+<pre id="repo_url"></pre>
+
 <h1>Last merge log</h1>
 <iframe style="height:40%" src="/automerger.log"></iframe>
 
@@ -17,5 +19,9 @@ iframe {width: 100%; border: 1px solid #aaa; background: #eee; }
 <h1>Automerger loop log</h1>
 <iframe style="height:40%" src="/automerger-loop.log"></iframe>
 
+<script>
+document.getElementById('repo_url').innerText = 'http://' + location.hostname +
+                                                '/chromium-blink-merge.git';
+</script>
 </body>
 </html>
