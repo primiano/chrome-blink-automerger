@@ -25,8 +25,8 @@ grep -q automerger /etc/sudoers || {
 chown automerger:automerger /automerger
 chmod 755 /automerger
 
-apt-get update
-apt-get upgrade -y
+apt-get update -qq
+apt-get upgrade -qy
 
 # Install git from wheezy-backports, the default one is ancient (1.7).
 apt-get install -y -t wheezy-backports git git-core curl python-zdaemon less \
@@ -67,12 +67,12 @@ cat >/etc/nginx/sites-available/default <<"EOF"
     location ~ /git(/.*) {
         client_max_body_size 0;
         gzip off;
-        fastcgi_param SCRIPT_FILENAME   /usr/lib/git-core/git-http-backend;
-        include /etc/nginx/fastcgi_params2;
+        fastcgi_param SCRIPT_FILENAME /usr/lib/git-core/git-http-backend;
+        include /etc/nginx/fastcgi_params;
         fastcgi_param GIT_HTTP_EXPORT_ALL "";
         fastcgi_param GIT_PROJECT_ROOT  /automerger/chromium-blink-merge.git;
-        fastcgi_param PATH_INFO   $1;
-        fastcgi_pass  unix:/var/run/fcgiwrap.socket;
+        fastcgi_param PATH_INFO $1;
+        fastcgi_pass unix:/var/run/fcgiwrap.socket;
     }
   }
 EOF
