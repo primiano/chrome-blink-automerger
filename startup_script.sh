@@ -8,12 +8,13 @@
 
 mkdir -p /automerger
 
-/usr/share/google/safe_format_and_mount -o noatime,commit=600,data=writeback \
+/usr/share/google/safe_format_and_mount -o noatime,commit=60,data=writeback \
     /dev/disk/by-id/google-chromium-blink-automerger-ssd \
     /automerger
 
 # Create the automerger user if it doesn't exist.
 getent passwd automerger &>/dev/null || {
+  addgroup --gid 1002 automerger
   adduser -q automerger --gecos automerger --disabled-login \
       --uid 1002 --gid 1002
 }
@@ -31,7 +32,7 @@ apt-get upgrade -qy
 
 # Install git from wheezy-backports, the default one is ancient (1.7).
 apt-get install -qy -t wheezy-backports git git-core curl python-zdaemon less \
-                      vim nginx fcgiwrap
+                      vim nginx fcgiwrap gitweb
 
 # Write the "automerger" command to /usr/local/bin.
 cat >/usr/local/bin/automerger <<"EOF"
@@ -57,6 +58,7 @@ cat >/etc/nginx/sites-available/default <<"EOF"
     listen [::]:80 default_server ipv6only=on;
     root /automerger;
     server_name localhost;
+    include /etc/nginx/mime.types;
     location / {
       try_files $uri $uri/ =404;
       autoindex on;
@@ -76,7 +78,25 @@ cat >/etc/nginx/sites-available/default <<"EOF"
         fastcgi_param PATH_INFO $1;
         fastcgi_pass unix:/var/run/fcgiwrap.socket;
     }
+    location /gitweb {
+        root /usr/share/;
+        index gitweb.cgi;
+        include fastcgi_params;
+        gzip off;
+        fastcgi_param GITWEB_CONFIG  /etc/conf.d/gitweb.conf;
+        fastcgi_param SCRIPT_FILENAME /usr/share/gitweb/index.cgi;
+        if ($uri ~ "/gitweb/gitweb.cgi") {
+            fastcgi_pass unix:/var/run/fcgiwrap.socket;
+        }
+    }
   }
+EOF
+
+dpkg-divert /etc/gitweb.conf
+cat >/etc/nginx/sites-available/default <<"EOF"
+projectroot = "/automerger/";
+$git_temp = "/tmp";
+@diff_opts = (); #@diff_opts = ("-M");
 EOF
 service nginx restart
 
@@ -109,7 +129,7 @@ automerger stop &>/dev/null || true
 git config --global core.deltaBaseCacheLimit 128M
 
 # Fetch and run the automerger scripts.
-AUTOMERGER_BIN=/automerger/bin
+AUTOMERGER_BIN="${HOME}/bin"
 [ -d "${AUTOMERGER_BIN}" ] || {
   git clone "${AUTOMERGER_REPO}" --branch "${AUTOMERGER_BRANCH}" \
       --single-branch "${AUTOMERGER_BIN}"
@@ -130,9 +150,9 @@ git -C "${AUTOMERGER_BIN}" clean -qdf
 # "${GCOMPUTE_TOOLS}/git-cookie-authdaemon"  # TODO check here
 
 # Create zdaemon config file for automerger service.
-cat >/automerger/.zdaemon.conf <<"EOF"
+cat >/automerger/.zdaemon.conf <<EOF
 <runner>
-  program /automerger/bin/automerger_loop.sh
+  program ${AUTOMERGER_BIN}/automerger_loop.sh
   directory /automerger/
   socket-name /automerger/automerger.zdsock
   transcript /automerger/automerger-loop.log

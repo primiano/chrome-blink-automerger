@@ -31,7 +31,7 @@
 
 source "$(dirname $0)/vars.sh"
 
-WORKDIR="${HOME}/workdir.git"
+WORKDIR="/automerger/workdir.git"
 
 export GIT_AUTHOR_NAME="${AUTOMERGER_GIT_NAME}"
 export GIT_AUTHOR_EMAIL="${AUTOMERGER_GIT_EMAIL}"
@@ -132,7 +132,8 @@ if [ "${MERGED_REPO:0:1}" = "/" ]; then
     (
       cd "${MERGED_REPO}"
       git init --bare
-      git config pack.packSizeLimit 64m  # For dumb http protocol.
+      echo "Chrome+Blink merged repo" > description
+      git config pack.packSizeLimit 1g  # For dumb http protocol.
       mv hooks/post-update.sample hooks/post-update
     )
   fi
@@ -143,6 +144,7 @@ if [ ! -d "${WORKDIR}" ]; then
   mkdir -p "${WORKDIR}"
   cd "${WORKDIR}"
   git init --bare
+  echo "Automerger working directory" > description
   git remote add blink -t master "${BLINK_REPO}"
   git remote add chromium -t master "${CHROMIUM_REPO}"
   git remote add origin "${MERGED_REPO}"
