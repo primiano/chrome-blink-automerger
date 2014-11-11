@@ -64,6 +64,7 @@ cat >/etc/nginx/sites-available/default <<"EOF"
     types {
       text/plain txt log;
     }
+    rewrite  ^/git$ /git/ permanent;
     location ~ /git(/.*) {
         client_max_body_size 0;
         gzip off;
