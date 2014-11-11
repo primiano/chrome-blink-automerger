@@ -14,7 +14,8 @@ mkdir -p /automerger
 
 # Create the automerger user if it doesn't exist.
 getent passwd automerger &>/dev/null || {
-  adduser -q automerger --gecos automerger --disabled-login
+  adduser -q automerger --gecos automerger --disabled-login \
+      --uid 1002 --gid 1002
 }
 
 # Allow the automerger user to run commands as unpriviledged user.
