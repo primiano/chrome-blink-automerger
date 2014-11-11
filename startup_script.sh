@@ -30,7 +30,7 @@ apt-get upgrade -y
 
 # Install git from wheezy-backports, the default one is ancient (1.7).
 apt-get install -y -t wheezy-backports git git-core curl python-zdaemon less \
-                      vim nginx
+                      vim nginx fcgiwrap
 
 # Write the "automerger" command to /usr/local/bin.
 cat >/usr/local/bin/automerger <<"EOF"
@@ -49,8 +49,8 @@ chmod +x /usr/local/bin/automerger
 dpkg-divert --local --rename --add /sbin/on_ac_power
 ln -sf /bin/true /sbin/on_ac_power
 
-dpkg-divert /etc/nginx/sites-enabled/default
-cat >/etc/nginx/sites-enabled/default <<"EOF"
+dpkg-divert /etc/nginx/sites-available/default
+cat >/etc/nginx/sites-available/default <<"EOF"
   server {
     listen 80 default_server;
     listen [::]:80 default_server ipv6only=on;
@@ -59,9 +59,20 @@ cat >/etc/nginx/sites-enabled/default <<"EOF"
     location / {
       try_files $uri $uri/ =404;
       autoindex on;
+      index automerger.log;
     }
     types {
       text/plain txt log;
+    }
+    location ~ /git(/.*) {
+        client_max_body_size 0;
+        gzip off;
+        fastcgi_param SCRIPT_FILENAME   /usr/lib/git-core/git-http-backend;
+        include /etc/nginx/fastcgi_params2;
+        fastcgi_param GIT_HTTP_EXPORT_ALL "";
+        fastcgi_param GIT_PROJECT_ROOT  /automerger/chromium-blink-merge.git;
+        fastcgi_param PATH_INFO   $1;
+        fastcgi_pass  unix:/var/run/fcgiwrap.socket;
     }
   }
 EOF
