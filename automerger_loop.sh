@@ -5,6 +5,10 @@
 
 source "$(dirname $0)/vars.sh"
 
+touch automerger.log
+touch automerger-full.log
+chmod 644 automerger.log automerger-full.log
+
 while true; do
   echo 
   echo "Starting automerger cycle $(date)"
@@ -14,8 +18,14 @@ while true; do
   git -C "$(dirname $0)" clean -df
   pkill git
 
-  "$(dirname $0)/automerger_iteration.sh"
+  cat automerger.log >> automerger-full.log
+  tail -n 10000 automerger-full.log > automerger-full.log.tmp
+  mv -f automerger-full.log.tmp automerger-full.log
+  date > automerger.log
+  "$(dirname $0)/automerger_iteration.sh" &>> automerger.log
   exit_code=$?
+  echo "---END exit_code=${exit_code}  $(date)" >> automerger.log
+
   if [ $exit_code != 0 ]; then
     echo "Automerger error (exit_code: $exit_code)"
   fi

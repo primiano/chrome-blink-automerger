@@ -58,7 +58,6 @@ cat >/etc/nginx/sites-enabled/default <<"EOF"
     server_name localhost;
     location / {
       try_files $uri $uri/ =404;
-      index automerger.log;
       autoindex on;
     }
     types {
@@ -123,8 +122,8 @@ cat >/automerger/.zdaemon.conf <<"EOF"
   program /automerger/bin/automerger_loop.sh
   directory /automerger/
   socket-name /automerger/automerger.zdsock
-  transcript /automerger/automerger.log
-  logfile /automerger/automerger.log
+  transcript /automerger/automerger-loop.log
+  logfile /automerger/automerger-loop.log
 </runner>
 <environment>
   LANG C
@@ -135,9 +134,9 @@ cat >/automerger/.zdaemon.conf <<"EOF"
 EOF
 
 # Start automerger service.
-touch /automerger/automerger.log
-chmod 644 /automerger/automerger.log
-echo > /automerger/automerger.log
+touch /automerger/automerger-loop.log
+chmod 644 /automerger/automerger-loop.log
+echo > /automerger/automerger-loop.log
 automerger start
 
 SUDOEOF
