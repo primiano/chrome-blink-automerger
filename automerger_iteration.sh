@@ -31,7 +31,7 @@
 
 source "$(dirname $0)/vars.sh"
 
-WORKDIR="${HOME}/chromium-plus-blink.git"
+WORKDIR="${HOME}/workdir.git"
 
 export GIT_AUTHOR_NAME="${AUTOMERGER_GIT_NAME}"
 export GIT_AUTHOR_EMAIL="${AUTOMERGER_GIT_EMAIL}"
