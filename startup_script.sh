@@ -93,10 +93,10 @@ cat >/etc/nginx/sites-available/default <<"EOF"
 EOF
 
 dpkg-divert /etc/gitweb.conf
-cat >/etc/nginx/sites-available/default <<"EOF"
-projectroot = "/automerger/";
+cat >/etc/gitweb.conf <<"EOF"
+$projectroot = "/automerger/";
 $git_temp = "/tmp";
-@diff_opts = (); #@diff_opts = ("-M");
+@diff_opts = ();
 EOF
 service nginx restart
 
