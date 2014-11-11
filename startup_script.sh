@@ -29,7 +29,7 @@ apt-get update -qq
 apt-get upgrade -qy
 
 # Install git from wheezy-backports, the default one is ancient (1.7).
-apt-get install -y -t wheezy-backports git git-core curl python-zdaemon less \
+apt-get install -qy -t wheezy-backports git git-core curl python-zdaemon less \
                       vim nginx fcgiwrap
 
 # Write the "automerger" command to /usr/local/bin.
