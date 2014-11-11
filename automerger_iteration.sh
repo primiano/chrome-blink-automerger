@@ -75,7 +75,7 @@ with_backoff () {
 lookup_by_svn_id() {
   local GIT_SVN_ID="$(git cat-file commit "$1" | grep '^git-svn-id')"
   local CORRESPONDING_SHA="$(git rev-list "$2" --grep "${GIT_SVN_ID}")"
-  if [ "${CORRESPONDING_SHA}" == "" ]; then
+  if [ "${CORRESPONDING_SHA}" = "" ]; then
     echo "Could not lookup $1 in $2 using ${GIT_SVN_ID}" >&2
     return 1
   fi
@@ -101,7 +101,7 @@ merge_chromium_and_blink_trees() {
       egrep -v "chromium/blink.git|third_party/WebKit':" > "${TMP_DEPS}"
   DEPS_BLOB="$(git hash-object -w "${TMP_DEPS}")"
   rm -f "${TMP_DEPS}"
-  echo -e "100644 blob ${DEPS_BLOB}\tDEPS" >> "${TMP_TREEDESC}"
+  /bin/echo -e "100644 blob ${DEPS_BLOB}\tDEPS" >> "${TMP_TREEDESC}"
 
   # Remove third_party/WebKit entries from .gitignore and readd to the tree.
   TMP_GITIGNORE="$(mktemp)"
@@ -109,7 +109,7 @@ merge_chromium_and_blink_trees() {
       grep -v "/third_party/WebKit" > "${TMP_GITIGNORE}"
   GITIGNORE_BLOB="$(git hash-object -w "${TMP_GITIGNORE}")"
   rm -f "${TMP_GITIGNORE}"
-  echo -e "100644 blob ${GITIGNORE_BLOB}\t.gitignore" >> "${TMP_TREEDESC}"
+  /bin/echo -e "100644 blob ${GITIGNORE_BLOB}\t.gitignore" >> "${TMP_TREEDESC}"
   
   # MERGE_TREEISH: chromium + blink-rewritten + mangled DEPS and .gitignore.
   MERGE_TREEISH="$(git mktree < "${TMP_TREEDESC}")"
@@ -128,6 +128,7 @@ if [ ! -d "${WORKDIR}" ]; then
   mkdir -p "${WORKDIR}"
   cd "${WORKDIR}"
   git init --bare
+  git config pack.packSizeLimit 64m  # For dumb http protocol.
   git remote add blink -t master "${BLINK_REPO}"
   git remote add chromium -t master "${CHROMIUM_REPO}"
   git remote add origin "${MERGED_REPO}"
@@ -170,15 +171,20 @@ if [ ${N_COMMITS_TO_REWRITE} -gt 0 ]; then
   # Copy the upstream ToT ref into the "blink-rewrite" branch and switch to it. 
   git branch -q -f blink-rewrite blink/master
   git symbolic-ref HEAD refs/heads/blink-rewrite
+  git branch blink-rewrite -q --set-upstream-to origin/blink-rewrite
 
-  # Here the black magic begins. TODO description ###############################
+  # This is a pretty hardcode piece of git black magic. The goal is rewriting
+  # the history of Blink, in a way that make all the commits look like as if
+  # they were created in $ROOT/third_party/WebKit instead of $ROOT/. Also, we
+  # want (or, at least, I do) to do this without expensive operations which 
+  # involve having a working copy and doing a lot of I/O.
   git filter-branch -f --commit-filter '
       TREE="$1"; shift; parent="$2"
-      if [ "${parent}" == "${LAST_BLINK_SHA_PROCESSED}" ]; then
+      if [ "${parent}" = "${LAST_BLINK_SHA_PROCESSED}" ]; then
         parent="${LAST_REWRITTEN_SHA}"
       fi
-      SUBTREE1="$(echo -e 040000 tree "${TREE}\tWebKit" | git mktree)"
-      SUBTREE2="$(echo -e 040000 tree "${SUBTREE1}\tthird_party" | git mktree)"
+      SUBTREE1="$(/bin/echo -e "040000 tree ${TREE}\tWebKit" | git mktree)"
+      SUBTREE2="$(/bin/echo -e "040000 tree ${SUBTREE1}\tthird_party" | git mktree)"
       git commit-tree ${SUBTREE2} -p "${parent}"' -- \
       ${LAST_BLINK_SHA_PROCESSED}..blink-rewrite
 
@@ -229,7 +235,8 @@ if [ ${N_COMMITS_TO_MERGE} -gt 0 ]; then
       -m "Merge ToT Chrome @ ${CHROME_SHA} + ToT Blink @ ${BLINK_SHA}")"
   
   echo "Pushing the merge commit ${MERGE_COMMIT} to origin/master_tot"
-  with_backoff git push origin "${MERGE_COMMIT}:refs/heads/master_tot"
+  git branch -q -f master_tot ${MERGE_COMMIT}
+  with_backoff git push origin master_tot:refs/heads/master_tot
 else  # N_COMMITS_TO_MERGE > 0
   echo "Nothing to be done"
 fi
@@ -248,8 +255,8 @@ N_COMMITS_TO_MERGE="$(git rev-list --count --no-merges \
                     chromium/master --not origin/master_pinned)"
 
 if [ ${N_COMMITS_TO_MERGE} -gt 0 ]; then
-  git branch -q -f master origin/master_pinned
-  git symbolic-ref HEAD refs/heads/master
+  git branch -q -f master_pinned origin/master_pinned
+  git symbolic-ref HEAD refs/heads/master_pinned
   DEPS="$(git show chromium/master:DEPS)"
   PARSER_CODE="import sys; Var=lambda x:x; exec(sys.stdin.read()); \
                print vars['webkit_revision']"
@@ -271,7 +278,8 @@ if [ ${N_COMMITS_TO_MERGE} -gt 0 ]; then
       -m "Merge ToT Chrome @ ${CHROME_SHA} + DEPS Blink @ ${PINNED_BLINK_SHA}")"
   
   echo "Pushing the merge commit ${MERGE_COMMIT} to origin/master_pinned"
-  with_backoff git push origin --force "${MERGE_COMMIT}:refs/heads/master_pinned"
+  git branch -q -f master_pinned "${MERGE_COMMIT}"
+  with_backoff git push origin --force master_pinned:refs/heads/master_pinned
 else  # N_COMMITS_TO_MERGE > 0
   echo "Nothing to be done"
 fi
