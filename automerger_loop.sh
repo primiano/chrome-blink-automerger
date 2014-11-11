@@ -18,7 +18,7 @@ while true; do
   echo "Starting automerger cycle $(getdate)"
 
   # Self-update
-  pkill git
+  pkill -u "${USER}" git
   git -C "$(dirname $0)" pull --ff-only
   git -C "$(dirname $0)" clean -df
 
