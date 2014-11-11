@@ -127,6 +127,7 @@ automerger stop &>/dev/null || true
 
 # Set git settings.
 git config --global core.deltaBaseCacheLimit 128M
+git config --global pack.packSizeLimit 512m
 
 # Fetch and run the automerger scripts.
 AUTOMERGER_BIN="${HOME}/bin"

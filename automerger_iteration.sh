@@ -133,7 +133,6 @@ if [ "${MERGED_REPO:0:1}" = "/" ]; then
       cd "${MERGED_REPO}"
       git init --bare
       echo "Chrome+Blink merged repo" > description
-      git config pack.packSizeLimit 1g  # For dumb http protocol.
       mv hooks/post-update.sample hooks/post-update
     )
   fi
@@ -299,6 +298,10 @@ if [ ${N_COMMITS_TO_MERGE} -gt 0 ]; then
                                        master_pinned:refs/heads/master
 else  # N_COMMITS_TO_MERGE > 0
   echo "Nothing to be done"
+fi
+
+if [ "${MERGED_REPO:0:1}" = "/" ]; then
+  (cd "${MERGED_REPO}"; git update-server-info)
 fi
 
 exit 0
