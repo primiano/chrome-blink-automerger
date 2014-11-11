@@ -74,7 +74,7 @@ with_backoff () {
 # commits between blink/master and the origin/blink-rewrite.
 lookup_by_svn_id() {
   local GIT_SVN_ID="$(git cat-file commit "$1" | grep '^git-svn-id')"
-  local CORRESPONDING_SHA="$(git rev-list "$2" --grep "${GIT_SVN_ID}")"
+  local CORRESPONDING_SHA="$(git rev-list -1 "$2" --grep "${GIT_SVN_ID}")"
   if [ "${CORRESPONDING_SHA}" = "" ]; then
     echo "Could not lookup $1 in $2 using ${GIT_SVN_ID}" >&2
     return 1

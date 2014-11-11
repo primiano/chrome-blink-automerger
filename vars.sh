@@ -1,4 +1,4 @@
-AUTOMERGER_CYCLE_TIME_SEC=60
+AUTOMERGER_CYCLE_TIME_SEC=300
 AUTOMERGER_GIT_NAME="Chrome+Blink Automerger"
 AUTOMERGER_GIT_EMAIL="chromium-blink-automerger@chromium.org"
 

@@ -24,7 +24,9 @@ while true; do
   date > automerger.log
   "$(dirname $0)/automerger_iteration.sh" &>> automerger.log
   exit_code=$?
-  echo "---END exit_code=${exit_code}  $(date)" >> automerger.log
+  /bin/echo -e "                             "\
+      "*** *** *** exit_code=${exit_code} $(date) *** *** ***\n\n" \
+      >> automerger.log
 
   if [ $exit_code != 0 ]; then
     echo "Automerger error (exit_code: $exit_code)"
