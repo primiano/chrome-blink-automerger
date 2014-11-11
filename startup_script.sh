@@ -62,7 +62,7 @@ cat >/etc/nginx/sites-available/default <<"EOF"
     location / {
       try_files $uri $uri/ =404;
       autoindex on;
-      index automerger.log;
+      index index.html;
     }
     types {
       text/plain txt log;
@@ -137,6 +137,7 @@ AUTOMERGER_BIN="${HOME}/bin"
 git -C "${AUTOMERGER_BIN}" fetch -q origin
 git -C "${AUTOMERGER_BIN}" reset -q --hard origin/master
 git -C "${AUTOMERGER_BIN}" clean -qdf
+cp "${AUTOMERGER_BIN}/index.html" /automerger/index.html
 
 # Fetch and run the git authentication daemon.
 # GCOMPUTE_TOOLS=/automerger/gcompute-tools
