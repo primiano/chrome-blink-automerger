@@ -163,7 +163,7 @@ cat >/automerger/.zdaemon.conf <<EOF
 <environment>
   LANG C
   LC_ALL C
-  HOME /automerger
+  HOME ${HOME}
   PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 </environment>
 EOF
