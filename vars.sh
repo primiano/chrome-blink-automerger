@@ -7,4 +7,4 @@ AUTOMERGER_BRANCH="master"
 
 BLINK_REPO="https://chromium.googlesource.com/chromium/blink.git"
 CHROMIUM_REPO="https://chromium.googlesource.com/chromium/src.git"
-MERGED_REPO="/automerger/chromium-blink-merge.git"
+MERGED_REPO="https://chromium.googlesource.com/playground/chromium-blink-merge.git"
