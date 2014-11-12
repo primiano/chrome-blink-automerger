@@ -141,15 +141,15 @@ git -C "${AUTOMERGER_BIN}" clean -qdf
 cp "${AUTOMERGER_BIN}/index.html" /automerger/index.html
 
 # Fetch and run the git authentication daemon.
-# GCOMPUTE_TOOLS=/automerger/gcompute-tools
-# [ -d "${GCOMPUTE_TOOLS}" ] || {
-#   git clone https://gerrit.googlesource.com/gcompute-tools "${GCOMPUTE_TOOLS}"
-# }
-# git -C "${GCOMPUTE_TOOLS}" fetch -q origin
-# git -C "${GCOMPUTE_TOOLS}" reset -q --hard origin/master
-# git -C "${GCOMPUTE_TOOLS}" clean -qdf
-# killall git-cookie-authdaemon &>/dev/null || true
-# "${GCOMPUTE_TOOLS}/git-cookie-authdaemon"  # TODO check here
+GCOMPUTE_TOOLS="${HOME}/gcompute-tools"
+[ -d "${GCOMPUTE_TOOLS}" ] || {
+  git clone https://gerrit.googlesource.com/gcompute-tools "${GCOMPUTE_TOOLS}"
+}
+git -C "${GCOMPUTE_TOOLS}" fetch -q origin
+git -C "${GCOMPUTE_TOOLS}" reset -q --hard origin/master
+git -C "${GCOMPUTE_TOOLS}" clean -qdf
+pkill -u "${USER}" -e -f git-cookie-authdaemon &>/dev/null || true
+"${GCOMPUTE_TOOLS}/git-cookie-authdaemon"
 
 # Create zdaemon config file for automerger service.
 cat >/automerger/.zdaemon.conf <<EOF
