@@ -291,12 +291,18 @@ if [ ${N_COMMITS_TO_MERGE} -gt 0 ]; then
   MERGE_COMMIT="$(git commit-tree "${MERGE_TREEISH}" \
       -p "${CHROME_SHA}" -p "${REWRITTEN_PINNED_SHA}" \
       -m "Merge ToT Chrome @ ${CHROME_SHA} + DEPS Blink @ ${PINNED_BLINK_SHA}")"
-  
+
+  SNAP_ID_FILE="/tmp/snapshot_id"
+  LAST_SNAP_ID="$(cat "${SNAP_ID_FILE}" 2>/dev/null || echo 0)"
+  SNAP_ID="$(( (LAST_SNAP_ID + 1) % 10 ))"
+  echo "${SNAP_ID}" > "${SNAP_ID_FILE}"
+
   echo "Pushing the merge commit ${MERGE_COMMIT} to origin/master_pinned"
   git branch -q -f master_pinned "${MERGE_COMMIT}"
   with_backoff git push origin --force master_pinned:refs/heads/master_pinned \
                                        master_pinned:refs/heads/master \
-                                       master_pinned:refs/heads/snapshots/${MERGE_COMMIT:0:12}
+                                       master_pinned:refs/heads/snapshots/${SNAP_ID} \
+                                       master_pinned:refs/archive/${MERGE_COMMIT}
 else  # N_COMMITS_TO_MERGE > 0
   echo "Nothing to be done"
 fi
