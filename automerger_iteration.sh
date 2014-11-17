@@ -296,7 +296,7 @@ if [ ${N_COMMITS_TO_MERGE} -gt 0 ]; then
   git branch -q -f master_pinned "${MERGE_COMMIT}"
   with_backoff git push origin --force master_pinned:refs/heads/master_pinned \
                                        master_pinned:refs/heads/master \
-                                       master_pinned:refs/archive/master_pinned_${MERGE_COMMIT}
+                                       master_pinned:refs/heads/snapshots/master_pinned_${MERGE_COMMIT}
 else  # N_COMMITS_TO_MERGE > 0
   echo "Nothing to be done"
 fi
