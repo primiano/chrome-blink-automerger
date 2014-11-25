@@ -294,7 +294,7 @@ if [ ${N_COMMITS_TO_MERGE} -gt 0 ]; then
 
   SNAP_ID_FILE="/tmp/snapshot_id"
   LAST_SNAP_ID="$(cat "${SNAP_ID_FILE}" 2>/dev/null || echo 0)"
-  SNAP_ID="$(( (LAST_SNAP_ID + 1) % 10 ))"
+  SNAP_ID="$(( (LAST_SNAP_ID + 1) % 32 ))"
   echo "${SNAP_ID}" > "${SNAP_ID_FILE}"
 
   echo "Pushing the merge commit ${MERGE_COMMIT} to origin/master_pinned"
