@@ -28,6 +28,9 @@ class _GITDB:
 # Cross-process shared cache of rewritten trees.
 _tree_cache = multiprocessing.Manager().dict()
 
+# The only tree for which the LayoutTest expectation files should be kept.
+_last_treeish = None
+
 
 def RewriteBlinkHistory(branch, blink_git_dir, new_obj_dir):
   """Rewrites the history of the given blink branch
@@ -79,9 +82,11 @@ def RewriteBlinkHistory(branch, blink_git_dir, new_obj_dir):
 
 
 def _RewriteTrees(trees):
+  global _last_treeish
+  _last_treeish = trees[-1]
   pool = multiprocessing.Pool()
   eta = eta_estimator.ETA(len(trees), unit='trees')
-  for _ in pool.imap_unordered(_TranslateOneTreeWrapper, trees):
+  for _ in pool.imap_unordered(_RewriteOneTreeWrapper, trees):
     eta.job_completed()
   pool.close()
   pool.join()
@@ -93,7 +98,8 @@ def _InitGitDBForCurrentProcess():
   if _GITDB.NEW is None:
     _GITDB.NEW = gitutils.GitLooseObjDB(_DIRS.NEWOBJS)
 
-def _TranslateOneTreeWrapper(treeish):
+
+def _RewriteOneTreeWrapper(treeish):
   """Entry point of each subprocess job."""
   _InitGitDBForCurrentProcess()
 
@@ -101,13 +107,13 @@ def _TranslateOneTreeWrapper(treeish):
   try:
     # Do not bother checking if we already translated the tree. It is extremely
     # unlikely (i.e. empty commits) and is not worth the overhead of doing that.
-    _TranslateOneTree(treeish)
+    _RewriteOneTree(treeish)
   except Exception as e:
     sys.stderr.write('\n' + traceback.format_exc())
     raise
 
 
-def _TranslateOneTree(tree_sha1, depth=0, in_layouttests_dir=False):
+def _RewriteOneTree(tree_sha1, depth=0, in_layouttests_dir=False):
   assert len(tree_sha1) == 40
   cached_translation = _tree_cache.get(tree_sha1)
   if cached_translation:
@@ -125,9 +131,10 @@ def _TranslateOneTree(tree_sha1, depth=0, in_layouttests_dir=False):
         continue
     else:
       assert mode == '40000'
-      if in_layouttests_dir or fname == 'LayoutTests':
+      if (in_layouttests_dir or fname == 'LayoutTests') and (
+          _last_treeish != tree_sha1):
         old_sha1 = sha1
-        sha1 = _TranslateOneTree(sha1, depth + 1, True)
+        sha1 = _RewriteOneTree(sha1, depth + 1, True)
         changed = True if old_sha1 != sha1 else changed
     entries.append((mode, fname, sha1))
 
@@ -189,9 +196,8 @@ def _RewriteCommits(revs):
     commit.tree = new_tree
     if commit.parent:
       if commit.parent not in translated_commits:
-        print('%s depends on %s, which has not been rewritten.' % (
+        assert False, ('%s depends on %s, which has not been rewritten.' % (
             rev[0:12],commit.parent[0:12]))
-        #assert False
         commit.parent = None
       else:
         commit.parent = translated_commits[commit.parent]
@@ -209,28 +215,20 @@ def _RewriteCommits(revs):
       new_head[0:12], old_head[0:12])
   return new_head
 
-################################################################################################################
-# Test garbage below this line.
+################################################################################
+# Testing stuff
+################################################################################
 
-import json
-NEWOBJDIR = '/mnt/new_objects'
-TREE_TRANS_CACHE = NEWOBJDIR + '/trans_cache.json'
-
-def LoadTreeCacheForTests():
-  if os.path.exists(TREE_TRANS_CACHE):
-    print 'Loading translations from %s' % TREE_TRANS_CACHE
-    with open(TREE_TRANS_CACHE, 'r') as f:
+def LoadTreeCacheForTests(cache_db_path):
+  import json
+  if os.path.exists(cache_db_path) and os.path.getsize(cache_db_path):
+    print 'Loading translations from %s' % cache_db_path
+    with open(cache_db_path, 'r') as f:
       for k,v in json.load(f).iteritems():
         _tree_cache[str(k)] = str(v)
       print 'Loaded %d translations from cache' % len(_tree_cache)
 
-def StoreTreeCacheForTests():
-  with open(TREE_TRANS_CACHE, 'w') as f:
+def StoreTreeCacheForTests(cache_db_path):
+  import json
+  with open(cache_db_path, 'w') as f:
     json.dump(_tree_cache.copy(), f)
-
-if __name__ == "__main__":
-  try:
-    RewriteBlinkHistory('master', os.path.abspath('.'), NEWOBJDIR)
-  finally:
-    with open(TREE_TRANS_CACHE, 'w') as f:
-      json.dump(_tree_cache.copy(), f)

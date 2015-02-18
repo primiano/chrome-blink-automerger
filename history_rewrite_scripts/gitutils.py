@@ -2,9 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-"""
-A collection of classes and function to read and write git objects.
-"""
+"""A collection of classes to read/parse/write efficiently git objects."""
 
 import hashlib
 import os
@@ -70,11 +68,6 @@ class GitReadonlyObjDB(_AbstractGitObjDB):
     assert len(sha1) == 40
     self._proc.stdin.write(sha1 + '\n')
     line = self._proc.stdout.readline().strip('\r\n')
-    parts = line.split()
-    if len(parts) != 3:
-      print 'PAAAAAAA', parts
-      import sys
-      sys.exit(1)
     ret_sha1, objtype, size = line.split()
     assert sha1 == ret_sha1
     payload = self._proc.stdout.read(int(size))
@@ -90,7 +83,6 @@ class GitReadonlyObjDB(_AbstractGitObjDB):
       self._proc.terminate()
     except:
       pass
-
 
 
 class GitLooseObjDB(_AbstractGitObjDB):
@@ -191,22 +183,6 @@ class Commit(object):
     return payload
 
 
-def Makedirs(path):
-  """like os.makedirs, ignore errors if already exists."""
-  try:
-    os.makedirs(path)
-  except OSError:
-    pass
-
-
-def WriteFileAtomic(file_path, data):
-  """Writes a file atomically (write to .tmp and rename)."""
-  tmp_path = '%s-%s.tmp' % (file_path, os.getpid())
-  with open(tmp_path, 'wb') as tmp_file:
-    tmp_file.write(data)
-  os.rename(tmp_path, file_path)
-
-
 def TreeLookup(entries, entry_name):
   """Returns the sha1 for the given blob/subtree name if any, or None."""
   sha1s = [e[2] for e in entries if e[1] == entry_name]
@@ -258,3 +234,18 @@ def _GitTreeEntryGetSortKey(entry):
     return entry[1] + '/'  # Git tree sorting is awkward. See goo.gl/Xfh0BX.
   else:
     return entry[1]
+
+def Makedirs(path):
+  """like os.makedirs, ignore errors if already exists."""
+  try:
+    os.makedirs(path)
+  except OSError:
+    pass
+
+
+def WriteFileAtomic(file_path, data):
+  """Writes a file atomically (write to .tmp and rename)."""
+  tmp_path = '%s-%s.tmp' % (file_path, os.getpid())
+  with open(tmp_path, 'wb') as tmp_file:
+    tmp_file.write(data)
+  os.rename(tmp_path, file_path)

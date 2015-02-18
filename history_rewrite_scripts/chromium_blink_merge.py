@@ -3,7 +3,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import ast
+import optparse
 import os
 import re
 import subprocess
@@ -11,22 +11,11 @@ import sys
 import time
 import traceback
 
+import config
+import deps_cleanup
 import gitutils
 import blink_rewriter
 
-
-_AUTOMERGER_NAME = 'Chromium+Blink automerger'
-_AUTOMERGER_EMAIL = 'chrome-blink-automerger@chromium.org'
-
-_BLINK_REPO_URL = 'https://chromium.googlesource.com/chromium/blink.git'
-_CHROMIUM_REPO_URL = 'https://chromium.googlesource.com/chromium/src.git'
-
-# 'ref in chromium repo' -> 'ref in blink repo'
-_BRANCHES_TO_MERGE = [
-    ('refs/heads/master', 'refs/heads/master'),
-    ('refs/branch-heads/2214', 'refs/branch-heads/chromium/2214'),
-    ('refs/branch-heads/2272', 'refs/branch-heads/chromium/2272'),
-]
 
 class _DIRS:
   NEWOBJS = None   # Where the new git objects (trees, blobs) will be put.
@@ -41,12 +30,18 @@ class _GITDB:
 
 
 def main():
+  parser = optparse.OptionParser()
+  parser.add_option('--no-clobber', '-n', action='store_true', help='Keep the '
+      ' original trees and the translation cache from the previous run (only '
+      ' to speed up testing)')
+  options, _ = parser.parse_args()
+
   base_dir = os.path.abspath(os.getcwd())
   _DIRS.BLINK = os.path.join(base_dir, 'blink.git')
   _DIRS.BLINKOBJS = os.path.join(_DIRS.BLINK, 'objects')
   _DIRS.CHROMIUM = os.path.join(base_dir, 'chromium.git')
   _DIRS.MERGEREPO = os.path.join(base_dir, 'chrome-blink-merge.git')
-  _DIRS.NEWOBJS = os.path.join(base_dir, 'new_objects') #os.path.join(_DIRS.MERGEREPO, 'objects')
+  _DIRS.NEWOBJS = os.path.join(base_dir, 'new_objects')
 
   print '--------------------------------------------------------'
   print '             Chromium + Blink automerger'
@@ -59,21 +54,24 @@ def main():
   print 'Merged repo dir:       ', _DIRS.MERGEREPO
   print ''
 
+  if not options.no_clobber:
+    _Rmtree(_DIRS.BLINK)
   if not os.path.exists(_DIRS.BLINK):
-    cmd = ['git', 'clone', '--mirror', _BLINK_REPO_URL, _DIRS.BLINK]
+    cmd = ['git', 'clone', '--mirror', config.BLINK_REPO_URL, _DIRS.BLINK]
     print 'Cloning blink: ', ' '.join(cmd)
     subprocess.check_call(cmd)
 
+  if not options.no_clobber:
+    _Rmtree(_DIRS.CHROMIUM)
   if not os.path.exists(_DIRS.CHROMIUM):
-    cmd = ['git', 'clone', '--mirror', _CHROMIUM_REPO_URL, _DIRS.CHROMIUM]
+    cmd = ['git', 'clone', '--mirror', config.CHROMIUM_REPO_URL, _DIRS.CHROMIUM]
     print 'Cloning chromium: ', ' '.join(cmd)
     subprocess.check_call(cmd)
 
-  if os.path.exists(_DIRS.MERGEREPO):
-    subprocess.check_call(['rm', '-rf', _DIRS.MERGEREPO + '.old'])
-    os.rename(_DIRS.MERGEREPO, _DIRS.MERGEREPO + '.old')
-    assert not os.path.exists(_DIRS.MERGEREPO)
+  _Rmtree(_DIRS.MERGEREPO)
 
+  if not options.no_clobber:
+    _Rmtree(_DIRS.NEWOBJS)
   if not os.path.exists(_DIRS.NEWOBJS):
     os.makedirs(_DIRS.NEWOBJS)
 
@@ -88,9 +86,11 @@ def main():
     alt_fd.write('\n%s' % os.path.join(_DIRS.BLINK, 'objects'))
     alt_fd.write('\n%s' % _DIRS.NEWOBJS)
 
-  blink_rewriter.LoadTreeCacheForTests() ################################################
+  if options.no_clobber:
+    blink_rewriter.LoadTreeCacheForTests(os.path.join(_DIRS.NEWOBJS, 'cache'))
+
   merge_heads = []  # ('chromium ref', 'blink ref', 'merge sha1 in chromium')
-  for chromium_ref, blink_ref in _BRANCHES_TO_MERGE:
+  for chromium_ref, blink_ref in config.BRANCHES_TO_MERGE:
     chromium_sha1 = subprocess.check_output(['git', 'rev-parse', chromium_ref],
                                             cwd=_DIRS.CHROMIUM).strip()
     blink_rewritten_sha1 = blink_rewriter.RewriteBlinkHistory(
@@ -100,8 +100,9 @@ def main():
     print 'Merged @ %s in %s' % (merge_sha1[0:12], _DIRS.MERGEREPO)
     cmd = ['git', 'update-ref', chromium_ref, merge_sha1]
     subprocess.check_call(cmd, cwd=_DIRS.MERGEREPO)
-  blink_rewriter.StoreTreeCacheForTests() ################################################
 
+  if options.no_clobber:
+    blink_rewriter.StoreTreeCacheForTests(os.path.join(_DIRS.NEWOBJS, 'cache'))
 
   print '\n\n'
   print '----------------------------------------------'
@@ -113,7 +114,12 @@ def main():
   print 'You should now:'
   print '  cd %s' %  _DIRS.MERGEREPO
   print '  git fsck'
-  print '  git push https://REPO/URL.git --mirror'
+  print '  git push %s %s' % (config.CHROMIUM_REPO_URL,
+                              ' '.join(b[0] for b in config.BRANCHES_TO_MERGE))
+  print ''
+  print 'Note: the repo has "alternates" references to the original blink and'
+  print 'chromium repos. If you need a standalone pack run:'
+  print '  git repack -a -d --window=50 --depth=100'
 
 
 def _MergeBlinkIntoChrome(chromium_sha1, blink_sha1):
@@ -132,8 +138,7 @@ def _MergeBlinkIntoChrome(chromium_sha1, blink_sha1):
   assert gitutils.TreeLookup(cr_3party_tree, 'WebKit') is None, (
       'WebKit seems already merged in %s' % chromium_sha1)
 
-
-  # .gitignore
+  # remove WebKit references from .gitignore
   cr_gitignore_sha1 = gitutils.TreeLookup(cr_root_tree, '.gitignore')
   assert cr_gitignore_sha1, 'No .gitignore in %s' % chromium_sha1
   cr_gitignore_lines = _GITDB.ORIG.ReadBlob(cr_gitignore_sha1).splitlines()
@@ -144,16 +149,15 @@ def _MergeBlinkIntoChrome(chromium_sha1, blink_sha1):
   cr_gitignore = '\n'.join(cr_gitignore_lines)
   cr_gitignore_sha1 = _GITDB.NEW.WriteBlob(cr_gitignore)
 
-
-  # DEPS
+  # remove WebKit references from DEPS
   deps_sha1 = gitutils.TreeLookup(cr_root_tree, 'DEPS')
   assert deps_sha1, 'No DEPS in %s' % chromium_sha1
   deps = _GITDB.ORIG.ReadBlob(deps_sha1)
-  deps = _CleanupDeps(deps)
+  deps = deps_cleanup.CleanupDeps(deps)
   deps_sha1 = _GITDB.NEW.WriteBlob(deps)
 
-  # cr_3party_tree at this point contains stuff like cld, libjpeg, ... but NOT
-  # WebKit (yet).
+  # cr_3party_tree at this point contains stuff like cld, libjpeg,
+  # but NOT WebKit (yet).
 
   # Now retrieve the WebKit tree inside third_party from the rewritten blink
   # history.
@@ -191,22 +195,18 @@ def _MergeBlinkIntoChrome(chromium_sha1, blink_sha1):
   # branch. This is to make it so that the merge operation is idempotent and
   # repeatable.
   cr_merge_commit_time = cr_last_commit_time + 300
-  cr_merge_msg = """Merge Chromium + Blink git repositories
-
-Chromium SHA1: %s
-Chromium position: %s@{#%s}
-Blink SHA1: %s
-Blink revision: %s@%s
-
-BUG=431458
-
-Cr-Commit-Position: %s@{#%d}
-""" % (chromium_sha1, cr_ref[0], cr_ref[1], blink_sha1, bl_ref[0],
-       bl_ref[1], cr_ref[0], int(cr_ref[1]) + 1)
+  cr_merge_msg = config.MERGE_MSG % { 'chromium_sha': chromium_sha1,
+                                      'chromium_branch': cr_ref[0],
+                                      'chromium_pos':  cr_ref[1],
+                                      'chromium_next_pos': int(cr_ref[1]) + 1,
+                                      'blink_sha': blink_sha1,
+                                      'blink_branch': bl_ref[0],
+                                      'blink_rev': bl_ref[1],
+                                    }
 
   cr_merge_commit = cr_commit
   cr_merge_commit.headers['author'] = '%s <%s> %d +0000' % (
-      _AUTOMERGER_NAME, _AUTOMERGER_EMAIL, cr_merge_commit_time)
+      config.AUTOMERGER_NAME, config.AUTOMERGER_EMAIL, cr_merge_commit_time)
   cr_merge_commit.headers['committer'] = cr_merge_commit.headers['author']
   cr_merge_commit.tree = cr_merge_root_tree_sha1
   cr_merge_commit.parent = chromium_sha1
@@ -216,36 +216,10 @@ Cr-Commit-Position: %s@{#%d}
   return cr_merge_commit_sha1
 
 
-def _CleanupDeps(deps):
-  """Remove Blink references from the gclient DEPS file contents."""
-  assert ast.parse(deps), 'DEPS (original) smoke test (AST parsing) failed'
-  lines = []
-  num_lines_removed = 0
-  REMOVE_PATTERNS = [
-    # remove the webkit_trunk and webkit_revision lines from the vars section.
-    "'webkit_trunk':",
-    "'webkit_revision':",
-    # remove the actual src/third_party/WebKit entry.
-    "'src/third_party/WebKit':",
-    "/chromium/blink.git"
-  ]
-
-  for line in deps.splitlines():
-    for p in REMOVE_PATTERNS:
-      if p in line:
-        num_lines_removed += 1
-        continue
-    lines.append(line)
-  assert num_lines_removed == 4, 'DEPS cleanup: was expecting to remove 4 lines'
-  deps = '\n'.join(lines)
-
-  # remove the lastchange hook.
-  deps = re.sub(r"\{[^}]+LASTCHANGE.blink[^}]+\},\s*", '', deps, re.MULTILINE)
-
-  # Assume that if DEPS is still python-parsable we did a good job.
-  assert ast.parse(deps), 'DEPS (modified) smoke test (AST parsing) failed'
-  return deps
-
+def _Rmtree(dirpath):
+  if os.path.exists(dirpath):
+    subprocess.check_call(['rm', '-rf', dirpath])
+    assert not os.path.exists(dirpath)
 
 if __name__ == '__main__':
   main()
