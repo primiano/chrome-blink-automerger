@@ -19,8 +19,8 @@ def CleanupDeps(deps):
   # remove the third_party/WebKit DEPS entry.
   deps = re.sub(r"['\"]src/third_party/WebKit['\"]:[^,]+,\s*", '', deps, re.MULTILINE)
 
-  # remove the lastchange hook.
-  deps = re.sub(r"\{[^}]+LASTCHANGE.blink[^}]+\},\s*", '', deps, re.MULTILINE)
+  # (DON'T) remove the lastchange hook.
+  # deps = re.sub(r"\{[^}]+LASTCHANGE.blink[^}]+\},\s*", '', deps, re.MULTILINE)
 
   # Assume that if DEPS is still python-parsable we succeeded.
   assert ast.parse(deps), 'DEPS smoke test (AST parsing) failed'
