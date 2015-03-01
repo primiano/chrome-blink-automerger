@@ -1,7 +1,7 @@
 # Chrome + Blink merge script
 
-This is a (set of) script(s) to handle the merge of the Blink repo into chromium
-in a repeatable way and performant way (~20 min).
+This is a (set of) script(s) to handle the rewrite of the Blink repo and its
+merge into chromium in a repeatable and performant way (~20-30 min).
 
 
 How to run:
@@ -12,13 +12,13 @@ Make sure you have enough swap if using tmpfs (which is warmly suggested).
 
 **Running the merge**
 
-    mount -t tmpfs none /mnt -o noatime,size=20G
-    cd /mnt
+    mount -t tmpfs none /mnt -o noatime,size=25G
+    cd /mnt  # or any other empty folder
     # edit config.py if necessary to adjust the branches list.
-    python ~/chrome-blink-automerger/history_rewrite_scripts/chromium_blink_merge.py
+    ~/chrome-blink-automerger/history_rewrite_scripts/chromium_blink_merge.py
 
-This will mirror the {chromium,blink} in /mnt/{chromium,blink}.git and generate
-a merged repo in /mnt/chrome-blink-merge.git.
+This will mirror the {chromium,blink} repos in /mnt/{chromium,blink}.git and
+generate a merged repo in /mnt/chrome-blink-merge.git.
 Note, for performances reasons the merged repo has `alternates` references to
 the chrome and blink repos. Do not move or remove any of the repos after the
 merge or you will have to repeat operation (or be enough of a git surgeon to fix
@@ -30,15 +30,15 @@ This repo will be identical to the original `chromium.git`, modulo the branches
 
 Those branches will have the same chromium history to the original ones
 (read: fast-forwardable) but with a merge commit on top.
-The merge commit will bring in (as right-side parent) the history of blink,
+The merge commit will bring in, as 2nd parent, the history of blink,
 rewritten as described in the section "anatomy of the blink history rewrite".
 
     ----------------------------------------------
                  RESULT OF THE MERGE
     ----------------------------------------------
-    refs/heads/master          + refs/heads/master                -> 13cbed7db8b055d9a687ec9497a4fe2c8a64d99d
-    refs/branch-heads/2214     + refs/branch-heads/chromium/2214  -> 9be66e2848eda9818ece11af7d7a2c97c66ebff7
-    refs/branch-heads/2272     + refs/branch-heads/chromium/2272  -> d796d67ad7dc26d9a2a36d7c275d589a286cb644
+    refs/heads/master          + refs/heads/master                -> 012345678abcdef
+    refs/branch-heads/2214     + refs/branch-heads/chromium/2214  -> abcdef012345678
+    refs/branch-heads/2272     + refs/branch-heads/chromium/2272  -> abcdefabcdef012
 
 At this point, after having verified that the merge is actually sensible,
 do the following:
@@ -62,12 +62,11 @@ The git magic inside `blink_rewriter.py` (which is invoked automatically by
 
      for each commit in $BRANCH_BEING_REWRITTEN:
         move the root tree under third_party/WebKit/
-        remove /LayoutTests/**.png
+        remove /LayoutTests/**.png (except last commit)
 
 
 Anatomy of the merge in master:
 -------------------------------
-
     Chromium master:
 
           |-base                    |-base
@@ -90,9 +89,17 @@ Anatomy of the merge in master:
                                 |-LayoutTests
                                 |-...
 
+Other than creating the merge commit with the rewritten blink history,
+the merge script does also:
+
+  - Remove third_party/WebKit from .gitignore
+  - Remove blink references from DEPS (see `deps_cleanup.py`)
+
+
 
 Anatomy of the merge in a release branch:
 -----------------------------------------
+Same steps (including .gitignore and DEPS) of master, but on release branches.
 
     Chromium
 
