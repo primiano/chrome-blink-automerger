@@ -28,8 +28,8 @@ class _GITDB:
 # Cross-process shared cache of rewritten trees.
 _tree_cache = multiprocessing.Manager().dict()
 
-# The only tree for which the LayoutTest expectation files should be kept.
-_last_treeish = None
+# Whitelist of .png files to preserve across the rewrite.
+_obj_whitelist = set()
 
 
 def RewriteBlinkHistory(branch, blink_git_dir, new_obj_dir):
@@ -52,17 +52,13 @@ def RewriteBlinkHistory(branch, blink_git_dir, new_obj_dir):
   _DIRS.ROOT_DIR = blink_git_dir
   _DIRS.NEWOBJS = new_obj_dir
 
-  if _GITDB.ORIG:
-    _GITDB.ORIG.Close()
-  _GITDB.NEW = None
-  _GITDB.ORIG = None
+  _InitGitDBForCurrentProcess()  # Init db for the main process.
 
   print '\nRewriting blink history for %s' % branch
   print '--------------------------------------------------------'
   assert os.path.isdir(_DIRS.NEWOBJS)
 
   commits, trees = _LoadRevlist(branch)
-
   print 'First commit to rewrite: ', subprocess.check_output(
       ['git', 'log', '-1', r'--format=%h %cd %s', commits[0]],
       cwd=_DIRS.ROOT_DIR).strip()
@@ -70,6 +66,12 @@ def RewriteBlinkHistory(branch, blink_git_dir, new_obj_dir):
       ['git', 'log', '-1', r'--format=%h %cd %s', commits[-1]],
       cwd=_DIRS.ROOT_DIR).strip()
   print 'Num commits to rewrite:  ', len(commits)
+
+  print 'Computing whitelist of binary files to keep'
+  last_treeish = trees[-1]
+  _BuildPngWhitelist(last_treeish, _obj_whitelist)
+  print 'Will preserve %d %s blobs (reference treeish: %s)' % (
+      len(_obj_whitelist), ' '.join(_BIN_EXTS), last_treeish[0:12])
 
   print 'Phase 1/2: rewriting trees in parallel'
   _RewriteTrees(trees)
@@ -81,22 +83,39 @@ def RewriteBlinkHistory(branch, blink_git_dir, new_obj_dir):
   return rewriten_head_sha1
 
 
+def _InitGitDBForCurrentProcess():
+  """Called by both the main and the pool's subprocesses to get a unique
+  instance per process."""
+  if _GITDB.ORIG:
+    _GITDB.ORIG.Close()
+  _GITDB.ORIG = gitutils.GitReadonlyObjDB(_DIRS.ROOT_DIR)
+  _GITDB.NEW = gitutils.GitLooseObjDB(_DIRS.NEWOBJS)
+
+
+def _BuildPngWhitelist(tree_sha1, whitelist, depth=0, in_layouttests_dir=False):
+  """Builds up a set of SHA1s of .png files for a tree. This is to build
+     the decisional set of the .png to NOT drop in the rewrite process."""
+  assert len(tree_sha1) == 40
+  tree_entries = _GITDB.ORIG.ReadTree(tree_sha1)
+  for mode, fname, sha1 in tree_entries:
+    if mode[0] == '1':  # It's a file
+      _, ext = os.path.splitext(fname)
+      if in_layouttests_dir and ext.lower() in _BIN_EXTS:
+        whitelist.add(sha1)
+        continue
+    else:
+      assert mode == '40000'
+      if (in_layouttests_dir or fname == 'LayoutTests'):
+        _BuildPngWhitelist(sha1, whitelist, depth + 1, True)
+
+
 def _RewriteTrees(trees):
-  global _last_treeish
-  _last_treeish = trees[-1]
-  pool = multiprocessing.Pool()
+  pool = multiprocessing.Pool(initializer=_InitGitDBForCurrentProcess)
   eta = eta_estimator.ETA(len(trees), unit='trees')
   for _ in pool.imap_unordered(_RewriteOneTreeWrapper, trees):
     eta.job_completed()
   pool.close()
   pool.join()
-
-
-def _InitGitDBForCurrentProcess():
-  if _GITDB.ORIG is None:
-    _GITDB.ORIG = gitutils.GitReadonlyObjDB(_DIRS.ROOT_DIR)
-  if _GITDB.NEW is None:
-    _GITDB.NEW = gitutils.GitLooseObjDB(_DIRS.NEWOBJS)
 
 
 def _RewriteOneTreeWrapper(treeish):
@@ -126,13 +145,13 @@ def _RewriteOneTree(tree_sha1, depth=0, in_layouttests_dir=False):
   for mode, fname, sha1 in tree_entries:
     if mode[0] == '1':  # It's a file
       _, ext = os.path.splitext(fname)
-      if in_layouttests_dir and ext.lower() in _BIN_EXTS:
+      if (in_layouttests_dir and ext.lower() in _BIN_EXTS and
+          sha1 not in _obj_whitelist):
         changed = True
-        continue
+        continue  # omit non whitelisted .png file.
     else:
       assert mode == '40000'
-      if (in_layouttests_dir or fname == 'LayoutTests') and (
-          _last_treeish != tree_sha1):
+      if in_layouttests_dir or fname == 'LayoutTests':
         old_sha1 = sha1
         sha1 = _RewriteOneTree(sha1, depth + 1, True)
         changed = True if old_sha1 != sha1 else changed
