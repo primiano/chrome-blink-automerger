@@ -12,9 +12,8 @@ CHROMIUM_REPO_URL = 'https://chromium.googlesource.com/chromium/src.git'
 # 'ref/in/chromium' -> 'ref/in/blink'
 BRANCHES_TO_MERGE = [
     ('refs/heads/master', 'refs/heads/master'),
-    ('refs/branch-heads/2214', 'refs/branch-heads/chromium/2214'),
-    ('refs/branch-heads/2272', 'refs/branch-heads/chromium/2272'),
     ('refs/branch-heads/2311', 'refs/branch-heads/chromium/2311'),
+    ('refs/branch-heads/2357', 'refs/branch-heads/chromium/2357'),
 ]
 
 MERGE_MSG = """Merge Chromium + Blink git repositories
