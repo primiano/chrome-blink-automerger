@@ -14,6 +14,7 @@ BRANCHES_TO_MERGE = [
     ('refs/heads/master', 'refs/heads/master'),
     ('refs/branch-heads/2311', 'refs/branch-heads/chromium/2311'),
     ('refs/branch-heads/2357', 'refs/branch-heads/chromium/2357'),
+    ('refs/branch-heads/2403', 'refs/branch-heads/chromium/2403'),
 ]
 
 MERGE_MSG = """Merge Chromium + Blink git repositories
