@@ -120,8 +120,6 @@ def _RewriteTrees(trees):
 
 def _RewriteOneTreeWrapper(treeish):
   """Entry point of each subprocess job."""
-  _InitGitDBForCurrentProcess()
-
   # Need this try block to deal properly with exceptions in multiprocessing.
   try:
     # Do not bother checking if we already translated the tree. It is extremely
