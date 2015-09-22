@@ -90,12 +90,13 @@ def main():
     blink_rewriter.LoadTreeCacheForTests(os.path.join(_DIRS.NEWOBJS, 'cache'))
 
   merge_heads = []  # ('chromium ref', 'blink ref', 'merge sha1 in chromium')
-  for chromium_ref, blink_ref in config.BRANCHES_TO_MERGE:
+  for chromium_ref, blink_ref, add_commit_position in config.BRANCHES_TO_MERGE:
     chromium_sha1 = subprocess.check_output(['git', 'rev-parse', chromium_ref],
                                             cwd=_DIRS.CHROMIUM).strip()
     blink_rewritten_sha1 = blink_rewriter.RewriteBlinkHistory(
         blink_ref, _DIRS.BLINK, _DIRS.NEWOBJS)
-    merge_sha1 = _MergeBlinkIntoChrome(chromium_sha1, blink_rewritten_sha1)
+    merge_sha1 = _MergeBlinkIntoChrome(chromium_sha1, blink_rewritten_sha1,
+                                       add_commit_position)
     merge_heads.append((chromium_ref, blink_ref, merge_sha1))
     print 'Merged @ %s in %s' % (merge_sha1[0:12], _DIRS.MERGEREPO)
     cmd = ['git', 'update-ref', chromium_ref, merge_sha1]
@@ -122,15 +123,15 @@ def main():
   print '  git repack -a -d --window=50 --depth=100'
 
 
-def _MergeBlinkIntoChrome(chromium_sha1, blink_sha1):
+def _MergeBlinkIntoChrome(chromium_sha1, blink_sha1, add_commit_position):
   # blink_sha1 points to a rewritten revision where Blink has been pushed into
   # third_party/WebKit/ already.
   # We want to merge the subtree in BLINK_REWRITTEN/third_party/WebKit into
   # CHROMIUM/third_party/.
 
-  # Retrieve third_party_tree, which is the tree inside the Chromium containing the
+  # Retrieve third_party_tree, which is the tree inside the Chromium containing
+  # third_party/WebKit/.
   cr_commit = _GITDB.ORIG.ReadCommit(chromium_sha1)
-  cr_last_commit_time = int(cr_commit.headers['committer'].rsplit(' ',2)[-2])
   cr_root_tree = _GITDB.ORIG.ReadTree(cr_commit.tree)
   cr_3party_tree_sha1 = gitutils.TreeLookup(cr_root_tree, 'third_party')
   assert cr_3party_tree_sha1, 'No /third_party in %s' % chromium_sha1
@@ -162,6 +163,7 @@ def _MergeBlinkIntoChrome(chromium_sha1, blink_sha1):
   # Now retrieve the WebKit tree inside third_party from the rewritten blink
   # history.
   bl_commit = _GITDB.NEW.ReadCommit(blink_sha1)
+  bl_last_commit_time = int(bl_commit.headers['committer'].rsplit(' ',2)[-2])
   bl_root_tree = _GITDB.NEW.ReadTree(bl_commit.tree)
   assert len(bl_root_tree) == 1 and bl_root_tree[0][1] == 'third_party'
   bl_3party_tree_sha1 = bl_root_tree[0][2]
@@ -180,29 +182,31 @@ def _MergeBlinkIntoChrome(chromium_sha1, blink_sha1):
       cr_merge_root_tree, 'DEPS', deps_sha1)
   cr_merge_root_tree_sha1 = _GITDB.NEW.WriteTree(cr_merge_root_tree)
 
-  # Work out the Cr-Commit-Position of the latest chromium commit.
-  cr_ref = re.findall(r'^Cr-Commit-Position: (.+)@\{#(\d+)\}$',
-                      cr_commit.message, re.MULTILINE)
-  assert cr_ref, 'Cannot find Cr-Commit-Position in %s' % chromium_sha1
-  cr_ref = cr_ref[0]
-
   bl_ref = re.findall(r'^git-svn-id: svn://svn.chromium.org(.+)@(\d+) ',
                       bl_commit.message, re.MULTILINE)
   assert bl_ref, 'Cannot find git-svn-id in %s' % blink_sha1
   bl_ref = bl_ref[0]
 
-  # Pretend that the commit happened 5 minutes after the last commit on the
-  # branch. This is to make it so that the merge operation is idempotent and
-  # repeatable.
-  cr_merge_commit_time = cr_last_commit_time + 300
-  cr_merge_msg = config.MERGE_MSG % { 'chromium_sha': chromium_sha1,
-                                      'chromium_branch': cr_ref[0],
-                                      'chromium_pos':  cr_ref[1],
-                                      'chromium_next_pos': int(cr_ref[1]) + 1,
-                                      'blink_sha': blink_sha1,
-                                      'blink_branch': bl_ref[0],
-                                      'blink_rev': bl_ref[1],
-                                    }
+  # Pretend that the commit happened 5 minutes after the last blink commit.
+  # This is to make it so that the merge operation is idempotent and repeatable.
+  cr_merge_commit_time = bl_last_commit_time + 300
+  cr_merge_msg = config.MERGE_MSG % {'blink_sha': blink_sha1,
+                                     'blink_branch': bl_ref[0],
+                                     'blink_rev': bl_ref[1]}
+  if add_commit_position:
+    # Work out the Cr-Commit-Position of the latest chromium commit.
+    cr_ref = re.findall(r'^Cr-Commit-Position: (.+)@\{#(\d+)\}$',
+                        cr_commit.message, re.MULTILINE)
+    assert cr_ref, 'Cannot find Cr-Commit-Position in %s' % chromium_sha1
+    cr_branchedfrom = re.findall(r'^(Cr-Branched-From:.+)$',
+                        cr_commit.message, re.MULTILINE)
+    cr_ref = cr_ref[-1]
+    cr_merge_msg += (
+        '\nCr-Commit-Position: %(chromium_branch)s@{#%(chromium_next_pos)s}' % {
+            'chromium_branch': cr_ref[0],
+            'chromium_next_pos': int(cr_ref[1]) + 1})
+    if cr_branchedfrom:
+      cr_merge_msg += '\n' + cr_branchedfrom[-1]
 
   cr_merge_commit = cr_commit
   cr_merge_commit.headers['author'] = '%s <%s> %d +0000' % (

@@ -9,22 +9,22 @@ AUTOMERGER_EMAIL = 'chrome-blink-automerger@chromium.org'
 BLINK_REPO_URL = 'https://chromium.googlesource.com/chromium/blink.git'
 CHROMIUM_REPO_URL = 'https://chromium.googlesource.com/chromium/src.git'
 
-# 'ref/in/chromium' -> 'ref/in/blink'
 BRANCHES_TO_MERGE = [
-    ('refs/heads/master', 'refs/heads/master'),
-    ('refs/branch-heads/2403', 'refs/branch-heads/chromium/2403'),
-    ('refs/branch-heads/2454', 'refs/branch-heads/chromium/2454'),
-    ('refs/branch-heads/2490', 'refs/branch-heads/chromium/2490'),
+    # Chromium ref,                         Blink ref,                    append_commit_position
+    ('refs/heads/master',              'refs/heads/master',               True),
+    ('refs/pending/heads/master',      'refs/heads/master',               False),
+
+    ('refs/branch-heads/2454',         'refs/branch-heads/chromium/2454', True),
+    ('refs/pending/branch-heads/2454', 'refs/branch-heads/chromium/2454', False),
+
+    ('refs/branch-heads/2490',         'refs/branch-heads/chromium/2490', True),
+    ('refs/pending/branch-heads/2490', 'refs/branch-heads/chromium/2490', False),
 ]
 
 MERGE_MSG = """Merge Chromium + Blink git repositories
 
-Chromium SHA1: %(chromium_sha)s
-Chromium position: %(chromium_branch)s@{#%(chromium_pos)s}
 Blink SHA1: %(blink_sha)s
 Blink revision: %(blink_branch)s@%(blink_rev)s
 
 BUG=431458
-
-Cr-Commit-Position: %(chromium_branch)s@{#%(chromium_next_pos)s}
 """
