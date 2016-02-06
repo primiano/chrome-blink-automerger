@@ -12,8 +12,10 @@ import eta_estimator
 import gitutils
 
 
-# Set of extensions to strip out from the LayoutTest/ directory
-_BIN_EXTS = ({'.png'})
+# Set of extensions to clang-format
+_SRC_EXTS = ({'.cpp', '.cc', '.h'})
+_CLANG_FORMAT_PATH = './clang-format'
+_CLANG_FORMAT_CWD = '/mnt'
 
 # Global dir constants (set by RewriteBlinkHistory and read by subprocesses).
 class _DIRS:
@@ -28,8 +30,8 @@ class _GITDB:
 # Cross-process shared cache of rewritten trees.
 _tree_cache = multiprocessing.Manager().dict()
 
-# Whitelist of .png files to preserve across the rewrite.
-_obj_whitelist = set()
+# Cross-process shared cache of rewritten blobs.
+_blob_cache = multiprocessing.Manager().dict()
 
 
 def RewriteBlinkHistory(branch, blink_git_dir, new_obj_dir):
@@ -51,6 +53,7 @@ def RewriteBlinkHistory(branch, blink_git_dir, new_obj_dir):
   """
   _DIRS.ROOT_DIR = blink_git_dir
   _DIRS.NEWOBJS = new_obj_dir
+  blobs_cache_path = os.path.join(new_obj_dir, 'blobs.cache')
 
   _InitGitDBForCurrentProcess()  # Init db for the main process.
 
@@ -67,16 +70,26 @@ def RewriteBlinkHistory(branch, blink_git_dir, new_obj_dir):
       cwd=_DIRS.ROOT_DIR).strip()
   print 'Num commits to rewrite:  ', len(commits)
 
-  print 'Computing whitelist of binary files to keep'
-  last_treeish = trees[-1]
-  _BuildPngWhitelist(last_treeish, _obj_whitelist)
-  print 'Will preserve %d %s blobs (reference treeish: %s)' % (
-      len(_obj_whitelist), ' '.join(_BIN_EXTS), last_treeish[0:12])
+  print '\nPhase 1/4: extracting set of files to clang-format'
+  if os.path.exists(blobs_cache_path):
+    blobs = LoadBlobCacheForTests(blobs_cache_path)
+  else:
+    blobs = set()
+    eta = eta_estimator.ETA(len(trees), unit='trees')
+    blobs_tree_cache = set()
+    for tree in trees:
+      _BuildBlobsSet(tree, blobs, blobs_tree_cache)
+      eta.job_completed()
+    print '  Will clang-format %d distinct files' % len(blobs)
+    StoreBlobCacheForTests(blobs, blobs_cache_path)
 
-  print 'Phase 1/2: rewriting trees in parallel'
+  print '\nPhase 2/4: rewriting blobs in parallel'
+  _RewriteBlobs(blobs)
+
+  print '\nPhase 3/4: rewriting trees in parallel'
   _RewriteTrees(trees)
 
-  print 'Phase 2/2: rewriting commits serially'
+  print '\nPhase 4/4: rewriting commits serially'
   rewriten_head_sha1 = _RewriteCommits(commits)
   print '--------------------------------------------------------'
 
@@ -92,21 +105,56 @@ def _InitGitDBForCurrentProcess():
   _GITDB.NEW = gitutils.GitLooseObjDB(_DIRS.NEWOBJS)
 
 
-def _BuildPngWhitelist(tree_sha1, whitelist, depth=0, in_layouttests_dir=False):
-  """Builds up a set of SHA1s of .png files for a tree. This is to build
-     the decisional set of the .png to NOT drop in the rewrite process."""
+def _BuildBlobsSet(tree_sha1, whitelist, tree_cache, depth=0):
   assert len(tree_sha1) == 40
+  if tree_sha1 in tree_cache:
+    return
+  tree_cache.add(tree_sha1)
   tree_entries = _GITDB.ORIG.ReadTree(tree_sha1)
   for mode, fname, sha1 in tree_entries:
     if mode[0] == '1':  # It's a file
+      if depth < 2:
+        continue
       _, ext = os.path.splitext(fname)
-      if in_layouttests_dir and ext.lower() in _BIN_EXTS:
+      if ext.lower() in _SRC_EXTS:
         whitelist.add(sha1)
         continue
     else:
       assert mode == '40000'
-      if (in_layouttests_dir or fname == 'LayoutTests'):
-        _BuildPngWhitelist(sha1, whitelist, depth + 1, True)
+      if ((depth == 0 and fname == 'third_party') or
+          (depth == 1 and fname == 'WebKit') or
+           depth >= 2):
+        _BuildBlobsSet(sha1, whitelist, tree_cache, depth + 1)
+
+
+def _RewriteBlobs(blobs):
+  pool = multiprocessing.Pool(initializer=_InitGitDBForCurrentProcess,
+                              processes=multiprocessing.cpu_count() * 3)
+  eta = eta_estimator.ETA(len(blobs), unit='blobs')
+  for _ in pool.imap_unordered(_RewriteOneBlobWrapper, blobs):
+    eta.job_completed()
+  pool.close()
+  pool.join()
+
+
+def _RewriteOneBlobWrapper(blobish):
+  """Entry point of each subprocess job."""
+  # Need this try block to deal properly with exceptions in multiprocessing.
+  try:
+    _RewriteOneBlob(blobish)
+  except Exception as e:
+    sys.stderr.write('\n' + traceback.format_exc())
+    raise
+
+
+def _RewriteOneBlob(sha1):
+  proc = subprocess.Popen([_CLANG_FORMAT_PATH], cwd=_CLANG_FORMAT_CWD,
+                          stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+  orig_content = _GITDB.ORIG.ReadBlob(sha1)
+  (stdout, stderr) = proc.communicate(orig_content)
+  assert not stderr
+  new_sha1 = _GITDB.NEW.WriteBlob(stdout)
+  _blob_cache[sha1] = new_sha1
 
 
 def _RewriteTrees(trees):
@@ -130,7 +178,7 @@ def _RewriteOneTreeWrapper(treeish):
     raise
 
 
-def _RewriteOneTree(tree_sha1, depth=0, in_layouttests_dir=False):
+def _RewriteOneTree(tree_sha1, depth=0, in_webkit_dir=False):
   assert len(tree_sha1) == 40
   cached_translation = _tree_cache.get(tree_sha1)
   if cached_translation:
@@ -138,20 +186,23 @@ def _RewriteOneTree(tree_sha1, depth=0, in_layouttests_dir=False):
 
   changed = False
   entries = []
-
   tree_entries = _GITDB.ORIG.ReadTree(tree_sha1)
   for mode, fname, sha1 in tree_entries:
     if mode[0] == '1':  # It's a file
       _, ext = os.path.splitext(fname)
-      if (in_layouttests_dir and ext.lower() in _BIN_EXTS and
-          sha1 not in _obj_whitelist):
-        changed = True
-        continue  # omit non whitelisted .png file.
+      if (in_webkit_dir and ext.lower() in _SRC_EXTS):
+        old_sha1 = sha1
+        sha1 = _blob_cache.get(sha1)
+        assert(sha1, 'Cache miss (blob %s) from phase 2' % sha1)
+        changed = old_sha1 != sha1
     else:
       assert mode == '40000'
-      if in_layouttests_dir or fname == 'LayoutTests':
+      if ((depth == 0 and fname == 'third_party') or
+          (depth == 1 and fname == 'WebKit') or
+          in_webkit_dir):
         old_sha1 = sha1
-        sha1 = _RewriteOneTree(sha1, depth + 1, True)
+        in_wk = in_webkit_dir or (depth == 1 and fname == 'WebKit')
+        sha1 = _RewriteOneTree(sha1, depth + 1, in_wk)
         changed = True if old_sha1 != sha1 else changed
     entries.append((mode, fname, sha1))
 
@@ -159,11 +210,6 @@ def _RewriteOneTree(tree_sha1, depth=0, in_layouttests_dir=False):
     res = _GITDB.NEW.WriteTree(entries)
   else:
     res =  tree_sha1
-
-  # Create the third_party/WebKit nesting if this is the root tree.
-  if depth == 0:
-    third_party_tree = _GITDB.NEW.WriteTree([('40000', 'WebKit', res)])
-    res = _GITDB.NEW.WriteTree([('40000', 'third_party', third_party_tree)])
 
   # If there is a collision (another process translated the same tree) check
   # pedantically that the translated tree has the same SHA1.
@@ -213,9 +259,10 @@ def _RewriteCommits(revs):
     commit.tree = new_tree
     if commit.parent:
       if commit.parent not in translated_commits:
-        assert False, ('%s depends on %s, which has not been rewritten.' % (
+        print >>sys.stderr, ('%s depends on %s, which has not been rewritten. Reusing original commit' % (
             rev[0:12],commit.parent[0:12]))
-        commit.parent = None
+        # assert False
+        #commit.parent = None
       else:
         commit.parent = translated_commits[commit.parent]
     try:
@@ -249,3 +296,15 @@ def StoreTreeCacheForTests(cache_db_path):
   import json
   with open(cache_db_path, 'w') as f:
     json.dump(_tree_cache.copy(), f)
+
+def LoadBlobCacheForTests(cache_db_path):
+  import json
+  if os.path.exists(cache_db_path) and os.path.getsize(cache_db_path):
+    print 'Loading blobs cache from %s' % cache_db_path
+    with open(cache_db_path, 'r') as f:
+      return set(json.load(f))
+
+def StoreBlobCacheForTests(blobs, cache_db_path):
+  import json
+  with open(cache_db_path, 'w') as f:
+    json.dump(list(blobs), f)
